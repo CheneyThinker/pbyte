@@ -9,14 +9,8 @@
 
 typedef unsigned char  byte;
 typedef unsigned short word;
-typedef unsigned int   dword;
-typedef unsigned long  ddword;
-
-#ifdef PLATFORM64
-  typedef unsigned long long  platform;
-#else
-  typedef unsigned int        platform;
-#endif
+typedef unsigned int   dword;//doubleword
+typedef unsigned long  qword;//quadword
 
 #define DOS_STUB
 #define LITTLE_ENDIAN

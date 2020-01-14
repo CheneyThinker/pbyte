@@ -52,7 +52,7 @@ typedef struct _IMAGE_OPTIONAL_HEADER {
   dword addressOfEntryPoint;
   dword baseOfCode;
   dword baseOfData;
-  platform imageBase;
+  dword imageBase;
   dword sectionAlignment;
   dword fileAlignment;
   word  majorOperatingSystemVersion;
@@ -67,10 +67,10 @@ typedef struct _IMAGE_OPTIONAL_HEADER {
   dword checksum;
   word  subSystem;
   word  dllCharacteristics;
-  platform sizeOfStackReserve;
-  platform sizeOfStackCommit;
-  platform sizeOfHeapReserve;
-  platform sizeOfHeapCommit;
+  dword sizeOfStackReserve;
+  dword sizeOfStackCommit;
+  dword sizeOfHeapReserve;
+  dword sizeOfHeapCommit;
   dword loaderFlags;
   dword numberOfRvaAndSizes;
   IMAGE_DATA_DIRECTORY dataDirectory[16];
@@ -81,6 +81,60 @@ typedef struct _IMAGE_NT_HEADERS {
   IMAGE_FILE_HEADER fileHeader;
   IMAGE_OPTIONAL_HEADER optionalHeader;
 } IMAGE_NT_HEADERS, *PIMAGE_NT_HEADERS;
+
+typedef struct _IMAGE_EXPORT_DIRECTORY {
+  dword characteristics;
+  dword timeDateStamp;
+  word  majorVersion;
+  word  minorVersion;
+  dword name;
+  dword base;
+  dword numberOfFunctions;
+  dword numberOfNames;
+  dword addressOfFunctions;
+  dword addressOfNames;
+  dword addressOfNameOrdinals;
+} IMAGE_EXPORT_DIRECTORY, *PIMAGE_EXPORT_DIRECTORY;
+
+typedef struct _IMAGE_IMPORT_DESCRIPTOR {
+  union {
+    dword characteristics;
+    dword originalFirstThunk;//INT
+  } dummyunionname;
+  dword timeDateStamp;
+  dword forwarderChain;
+  dword name;
+  dword firstThunk;//IAT
+} IMAGE_IMPORT_DESCRIPTOR, *PIMAGE_IMPORT_DESCRIPTOR;
+
+typedef struct _IMAGE_THUNK_DATA {
+  union {
+    dword forwarderString;
+    dword function;
+    dword ordinal;
+    dword addressOfData;
+  } u1;
+} IMAGE_THUNK_DATA, *PIMAGE_THUNK_DATA;
+
+typedef struct _IMAGE_IMPORT_BY_NAME {
+  word hint;
+  byte name[1];
+} IMAGE_IMPORT_BY_NAME, *PIMAGE_IMPORT_BY_NAME;
+
+typedef struct _IMAGE_RESOURCE_DIRECTORY {
+  dword characteristics;
+  dword timeDateStamp;
+  word  majorVersion;
+  word  minorVersion;
+  word  numberOfNamedEntries;
+  word  numberOfIdEntries;
+} IMAGE_RESOURCE_DIRECTORY, *PIMAGE_RESOURCE_DIRECTORY;
+
+typedef struct _IMAGE_RUNTIME_FUNCTION_ENTRY {
+  dword beginAddress;
+  dword endAddress;
+  dword unwindInfoAddress;
+} _IMAGE_RUNTIME_FUNCTION_ENTRY, *_PIMAGE_RUNTIME_FUNCTION_ENTRY;
 
 typedef struct _IMAGE_SECTION_HEADER {
   byte name[8];
