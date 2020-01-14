@@ -152,4 +152,7 @@ typedef struct _IMAGE_SECTION_HEADER {
   dword characteristics;
 } IMAGE_SECTION_HEADER, *PIMAGE_SECTION_HEADER;
 
+dword rva2foa(dword, word, dword, PIMAGE_SECTION_HEADER);
+dword foa2rva(dword, word, dword, PIMAGE_SECTION_HEADER);
+
 #endif

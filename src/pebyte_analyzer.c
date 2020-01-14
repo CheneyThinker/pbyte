@@ -7,7 +7,6 @@ int pebyte_analyzer(int argc, char** argv)
   {
     image_dos_header(pReadFile);
     image_nt_headers(pReadFile);
-    //fseek(pReadFile, inh.optionalHeader.sizeOfHeaders, SEEK_SET);
   }
   fclose(pReadFile);
   return 0;
@@ -48,10 +47,10 @@ void image_dos_header(FILE* pReadFile)
   printf("\n");
   printf("e_lfanew:   %08x\n", idh.e_lfanew);
   printf("---IMAGE_DOS_HEADER---\n");
-  #ifdef DOS_STUB
-    dos_stub(pReadFile, idh.e_lfanew - sizeof(IMAGE_DOS_HEADER));
-  #else
+  #ifdef SKIP_DOS_STUB
     fseek(pReadFile, idh.e_lfanew, SEEK_SET);
+  #else
+    dos_stub(pReadFile, idh.e_lfanew - sizeof(IMAGE_DOS_HEADER));
   #endif
 }
 
@@ -59,15 +58,20 @@ void dos_stub(FILE* pReadFile, dword pad)
 {
   printf("---DOS_STUB---\n");
   byte pad_byte[pad];
+  fread(pad_byte, pad * sizeof(byte), 1, pReadFile);
+  dword address = sizeof(IMAGE_DOS_HEADER);
   for (dword pad_index = 0; pad_index < pad; pad_index++)
   {
-    pad_byte[pad_index] = 0x00;
-    fread(&pad_byte[pad_index], 1, 1, pReadFile);
-    if (pad_index)
+    if (!(pad_index % 0x00000010))
     {
-      printf(" ");
+      if (pad_index)
+      {
+        printf("\n");
+      }
+      printf("%08x:", address);
+      address = address + 0x00000010;
     }
-    printf("%02x", pad_byte[pad_index]);
+    printf(" %02x", pad_byte[pad_index]);
   }
   printf("\n---DOS_STUB---\n");
 }
@@ -129,30 +133,37 @@ void image_optional_header(FILE* pReadFile, IMAGE_OPTIONAL_HEADER ioh, word size
   printf("\tsizeOfHeapCommit:            %08x\n", ioh.sizeOfHeapCommit);
   printf("\tloaderFlags:                 %08x\n", ioh.loaderFlags);
   printf("\tnumberOfRvaAndSizes:         %08x\n", ioh.numberOfRvaAndSizes);
-  //image_data_directory(pReadFile, ioh.dataDirectory);
   printf("\t---IMAGE_OPTIONAL_HEADER---\n");
   fseek(pReadFile, sizeOfOptionalHeader - sizeof(IMAGE_OPTIONAL_HEADER), SEEK_CUR);
-  image_section_header(pReadFile, numberOfSections);
+  PIMAGE_SECTION_HEADER pish = (PIMAGE_SECTION_HEADER) malloc(sizeof(IMAGE_SECTION_HEADER) * numberOfSections);
+  fread(pish, sizeof(IMAGE_SECTION_HEADER) * numberOfSections, 1, pReadFile);
+  image_data_directory(pReadFile, ioh, pish, numberOfSections);
+  image_section_header(pish, numberOfSections);
+  free(pish);
 }
 
-void image_data_directory(FILE* pReadFile, PIMAGE_DATA_DIRECTORY pidd)
+void image_data_directory(FILE* pReadFile, IMAGE_OPTIONAL_HEADER ioh, PIMAGE_SECTION_HEADER pish, word numberOfSections)
 {
+  PIMAGE_DATA_DIRECTORY pidd = ioh.dataDirectory;
   printf("\t\t---IMAGE_DATA_DIRECTORY---\n");
   for (byte index = 0; index < 0x10; index++)
   {
     printf("\t\tvirtualAddress: %08x size: %08x\n", pidd[index].virtualAddress, pidd[index].size);
-    fseek(pReadFile, pidd[index].virtualAddress, SEEK_SET);
-    switch (index)
+    if (pidd[index].size)
     {
-      case 0x00:
-        image_export_directory(pReadFile);
-        break;
-      case 0x01:
-        image_import_descriptor(pReadFile);
-        break;
-      case 0x02:
-        image_resource_directory(pReadFile);
-        break;
+      fseek(pReadFile, rva2foa(pidd[index].virtualAddress, numberOfSections, ioh.sectionAlignment, pish), SEEK_SET);
+      switch (index)
+      {
+        case 0x00:
+          image_export_directory(pReadFile);
+          break;
+        case 0x01:
+          image_import_descriptor(pReadFile);
+          break;
+        case 0x02:
+          //image_resource_directory(pReadFile);
+          break;
+      }
     }
   }
   printf("\t\t---IMAGE_DATA_DIRECTORY---\n");
@@ -234,9 +245,9 @@ void image_import_descriptor(FILE* pReadFile) {
     printf("\t\t\tforwarderChain:  %08x\n", iid.forwarderChain);
     printf("\t\t\tname:            %08x\n", iid.name);
     printf("\t\t\tfirstThunk:      %08x\n", iid.firstThunk);
-    fgetpos(pReadFile, &position);
-    image_thunk_data(pReadFile, iid.dummyunionname.originalFirstThunk);
-    fsetpos(pReadFile, &position);
+    //fgetpos(pReadFile, &position);
+    //image_thunk_data(pReadFile, iid.dummyunionname.originalFirstThunk);
+    //fsetpos(pReadFile, &position);
   }
   printf("\t\t\t---IMAGE_IMPORT_DESCRIPTOR---\n");
 }
@@ -295,21 +306,19 @@ void image_resource_directory(FILE* pReadFile) {
   printf("\t\t\t---IMAGE_RESOURCE_DIRECTORY---\n");
 }
 
-void image_section_header(FILE* pReadFile, word numberOfSections) {
+void image_section_header(PIMAGE_SECTION_HEADER pish, word numberOfSections) {
   printf("\t---IMAGE_SECTION_HEADER---\n");
-  IMAGE_SECTION_HEADER ish[numberOfSections];
   for (word index = 0; index < numberOfSections; index++) {
-    fread(&ish[index], sizeof(IMAGE_SECTION_HEADER), 1, pReadFile);
-    printf("\tname:                 %s\n", ish[index].name);
-    printf("\tphysicalAddress:      %08x virtualSize: %08x\n", ish[index].misc.physicalAddress, ish[index].misc.virtualSize);
-    printf("\tvirtualAddress:       %08x\n", ish[index].virtualAddress);
-    printf("\tsizeOfRawData:        %08x\n", ish[index].sizeOfRawData);
-    printf("\tpointerToRawData:     %08x\n", ish[index].pointerToRawData);
-    printf("\tpointerToRelocations: %08x\n", ish[index].pointerToRelocations);
-    printf("\tpointerToLinenumbers: %08x\n", ish[index].pointerToLinenumbers);
-    printf("\tnumberOfRelocations:  %04x\n", ish[index].numberOfRelocations);
-    printf("\tnumberOfLinenumbers:  %04x\n", ish[index].numberOfLinenumbers);
-    printf("\tcharacteristics:      %08x\n", ish[index].characteristics);
+    printf("\tname:                 %s\n", pish[index].name);
+    printf("\tphysicalAddress:      %08x virtualSize: %08x\n", pish[index].misc.physicalAddress, pish[index].misc.virtualSize);
+    printf("\tvirtualAddress:       %08x\n", pish[index].virtualAddress);
+    printf("\tsizeOfRawData:        %08x\n", pish[index].sizeOfRawData);
+    printf("\tpointerToRawData:     %08x\n", pish[index].pointerToRawData);
+    printf("\tpointerToRelocations: %08x\n", pish[index].pointerToRelocations);
+    printf("\tpointerToLinenumbers: %08x\n", pish[index].pointerToLinenumbers);
+    printf("\tnumberOfRelocations:  %04x\n", pish[index].numberOfRelocations);
+    printf("\tnumberOfLinenumbers:  %04x\n", pish[index].numberOfLinenumbers);
+    printf("\tcharacteristics:      %08x\n", pish[index].characteristics);
   }
   printf("\t---IMAGE_SECTION_HEADER---\n");
 }

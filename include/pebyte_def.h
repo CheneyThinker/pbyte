@@ -12,7 +12,7 @@ typedef unsigned short word;
 typedef unsigned int   dword;//doubleword
 typedef unsigned long  qword;//quadword
 
-#define DOS_STUB
+#define SKIP_DOS_STUB
 #define LITTLE_ENDIAN
 
 // IMAGE_DOS_HEADER e_magic
