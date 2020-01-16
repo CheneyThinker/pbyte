@@ -6,7 +6,7 @@ int pebyte_analyzer(int argc, char** argv)
   if (pReadFile != NULL)
   {
     dword e_lfanew;
-    image_dos_header(pReadFile, &e_lfanew);
+    dos_header(pReadFile, &e_lfanew);
 
     ms_dos_stub(pReadFile, e_lfanew);
 
@@ -18,18 +18,18 @@ int pebyte_analyzer(int argc, char** argv)
 
     dword sectionAlignment;
     dword numberOfRvaAndSizes;
-    image_optional_header(pReadFile, &sectionAlignment, &numberOfRvaAndSizes);
+    optional_header(pReadFile, &sectionAlignment, &numberOfRvaAndSizes);
 
     dword virtualAddress[numberOfRvaAndSizes];
     dword size[numberOfRvaAndSizes];
-    image_data_directories(pReadFile, numberOfRvaAndSizes, virtualAddress, size);
+    optional_header_data_directories(pReadFile, numberOfRvaAndSizes, virtualAddress, size);
 
     dword sectionVirtualAddress[numberOfSections];
     dword sizeOfRawData[numberOfSections];
     dword pointerToRawData[numberOfSections];
-    image_section_table(pReadFile, numberOfSections, sectionVirtualAddress, sizeOfRawData, pointerToRawData);
+    section_table(pReadFile, numberOfSections, sectionVirtualAddress, sizeOfRawData, pointerToRawData);
 
-    image_section_item(pReadFile, numberOfRvaAndSizes, virtualAddress, size, sectionAlignment, numberOfSections, sectionVirtualAddress, sizeOfRawData, pointerToRawData);
+    optional_header_data_directories_item(pReadFile, numberOfRvaAndSizes, virtualAddress, size, sectionAlignment, numberOfSections, sectionVirtualAddress, sizeOfRawData, pointerToRawData);
 
   }
   fclose(pReadFile);
@@ -38,7 +38,7 @@ int pebyte_analyzer(int argc, char** argv)
 
 void image_dos_header(FILE* pReadFile, dword* e_lfanew)
 {
-  printf("***IMAGE_DOS_HEADER***\n");
+  printf("***image_dos_header***\n");
   PRINTF_WORD(e_magic)
   PRINTF_WORD(e_cblp)
   PRINTF_WORD(e_cp)
@@ -58,12 +58,12 @@ void image_dos_header(FILE* pReadFile, dword* e_lfanew)
   PRINTF_WORD(e_oeminfo)
   PRINTF_WORD_ARR(e_res2, E_RES2_SIZE)
   PRINTF_PDWORD(e_lfanew)
-  printf("***IMAGE_DOS_HEADER***\n");
+  printf("***image_dos_header***\n");
 }
 
 void ms_dos_stub(FILE* pReadFile, dword e_lfanew)
 {
-  printf("***MS_DOS_STUB***\n");
+  printf("***ms_dos_stub***\n");
   #ifdef SKIP_DOS_STUB
     fseek(pReadFile, e_lfanew - IMAGE_DOS_HEADER_SIZE, SEEK_CUR);
   #else
@@ -89,12 +89,12 @@ void ms_dos_stub(FILE* pReadFile, dword e_lfanew)
       printf("\n");
     }
   #endif
-  printf("***MS_DOS_STUB***\n");
+  printf("***ms_dos_stub***\n");
 }
 
 void coff_file_header(FILE* pReadFile, word* numberOfSections, word* sizeOfOptionalHeader)
 {
-  printf("***COFF_FILE_HEADER***\n");
+  printf("***coff_file_header***\n");
   PRINTF_WORD(machine)
   PRINTF_PWORD(numberOfSections)
   PRINTF_DWORD(timeDateStamp)
@@ -102,12 +102,13 @@ void coff_file_header(FILE* pReadFile, word* numberOfSections, word* sizeOfOptio
   PRINTF_DWORD(numberOfSymbols)
   PRINTF_PWORD(sizeOfOptionalHeader)
   PRINTF_WORD(characteristics)
-  printf("***COFF_FILE_HEADER***\n");
+  printf("***coff_file_header***\n");
 }
 
-void image_optional_header(FILE* pReadFile, dword* sectionAlignment, dword* numberOfRvaAndSizes)
+void optional_header(FILE* pReadFile, dword* sectionAlignment, dword* numberOfRvaAndSizes)
 {
-  printf("***IMAGE_OPTIONAL_HEADER***\n");
+  printf("***optional_header***\n");
+  printf("***optional_header standard_fields***\n");
   PRINTF_WORD(magic)
   PRINTF_BYTE(majorLinkerVersion)
   PRINTF_BYTE(minorLinkerVersion)
@@ -119,10 +120,14 @@ void image_optional_header(FILE* pReadFile, dword* sectionAlignment, dword* numb
   if (magic == 0x010b)
   {
     PRINTF_DWORD(baseOfData)
+    printf("***optional_header standard_fields***\n");
+    printf("***optional_header windows_specific_fields***\n");
     PRINTF_DWORD(imageBase)
   }
   else if (magic == 0x020b)
   {
+    printf("***optional_header standard_fields***\n");
+    printf("***optional_header windows_specific_fields***\n");
     PRINTF_QWORD(imageBase)
   }
   PRINTF_PDWORD(sectionAlignment)
@@ -155,33 +160,29 @@ void image_optional_header(FILE* pReadFile, dword* sectionAlignment, dword* numb
   }
   PRINTF_DWORD(loaderFlags)
   PRINTF_PDWORD(numberOfRvaAndSizes)
-  printf("***IMAGE_OPTIONAL_HEADER***\n");
+  printf("***optional_header windows_specific_fields***\n");
+  printf("***optional_header***\n");
 }
 
-void image_data_directories(FILE* pReadFile, dword numberOfRvaAndSizes, dword* virtualAddress, dword* size)
+void optional_header_data_directories(FILE* pReadFile, dword numberOfRvaAndSizes, dword* virtualAddress, dword* size)
 {
-  printf("***IMAGE_DATA_DIRECTORIES***\n");
+  printf("***optional_header_data_directories***\n");
   for (dword index = 0x00000000; index < numberOfRvaAndSizes; index = index + 0x00000001)
   {
     PRINTF_PDWORD_ARR(virtualAddress, index)
     PRINTF_PDWORD_ARR(size, index)
   }
-  printf("***IMAGE_DATA_DIRECTORIES***\n");
+  printf("***optional_header_data_directories***\n");
 }
 
-void image_section_table(FILE* pReadFile, word numberOfSections, dword* virtualAddress, dword* sizeOfRawData, dword* pointerToRawData)
+void section_table(FILE* pReadFile, word numberOfSections, dword* virtualAddress, dword* sizeOfRawData, dword* pointerToRawData)
 {
-  printf("***IMAGE_SECTION_TABLE***\n");
+  printf("***section_table***\n");
   for (word index = 0x0000; index < numberOfSections; index = index + 0x0001)
   {
     byte name[8];
     fread(name, 1, sizeof(byte) * 8, pReadFile);
     printf("name: %s\n", name);
-    /*for (byte count = 0x00; count < 0x08; count = count + 0x01)
-      {
-        printf(" %02x", name[count]);
-      }
-      printf("\n");*/
     PRINTF_DWORD(virtualSize)
     PRINTF_PDWORD_ARR(virtualAddress, index)
     PRINTF_PDWORD_ARR(sizeOfRawData, index)
@@ -192,12 +193,12 @@ void image_section_table(FILE* pReadFile, word numberOfSections, dword* virtualA
     PRINTF_WORD(numberOfLinenumbers)
     PRINTF_DWORD(characteristics)
   }
-  printf("***IMAGE_SECTION_TABLE***\n");
+  printf("***section_table***\n");
 }
 
-void image_section_item(FILE* pReadFile, dword numberOfRvaAndSizes, dword* virtualAddress, dword* size, dword sectionAlignment, word numberOfSections, dword* sectionVirtualAddress, dword* sizeOfRawData, dword* pointerToRawData)
+void optional_header_data_directories_item(FILE* pReadFile, dword numberOfRvaAndSizes, dword* virtualAddress, dword* size, dword sectionAlignment, word numberOfSections, dword* sectionVirtualAddress, dword* sizeOfRawData, dword* pointerToRawData)
 {
-  printf("***IMAGE_SECTION_TABLE_ITEM***\n");
+  printf("***optional_header_data_directories_item***\n");
   for (dword index = 0x00000000; index < numberOfRvaAndSizes; index = index + 0x00000001)
   {
     if (size[index])
@@ -209,26 +210,63 @@ void image_section_item(FILE* pReadFile, dword numberOfRvaAndSizes, dword* virtu
       switch (index)
       {
         case 0x00000000:
-          image_export_directory(pReadFile);
+          export_table(pReadFile);
           break;
         case 0x00000001:
-          image_import_descriptor(pReadFile, sectionAlignment, numberOfSections, sectionVirtualAddress, sizeOfRawData, pointerToRawData);
+          import_table(pReadFile, sectionAlignment, numberOfSections, sectionVirtualAddress, sizeOfRawData, pointerToRawData);
           break;
         case 0x00000002:
-          image_resource_directory(pReadFile);
+          resource_table(pReadFile);
           break;
         case 0x00000003:
+          exception_table(pReadFile);
+          break;
+        case 0x00000004:
+          certificate_table(pReadFile);
+          break;
+        case 0x00000005:
+          base_relocation_table(pReadFile);
+          break;
+        case 0x00000006:
+          debug(pReadFile);
+          break;
+        case 0x00000007:
+          architecture(pReadFile);
+          break;
+        case 0x00000008:
+          global_ptr(pReadFile);
+          break;
+        case 0x00000009:
+          tls_table(pReadFile);
+          break;
+        case 0x0000000a:
+          load_config_table(pReadFile);
+          break;
+        case 0x0000000b:
+          bound_import(pReadFile);
+          break;
+        case 0x0000000c:
+          iat(pReadFile);
+          break;
+        case 0x0000000d:
+          delay_import_descriptor(pReadFile);
+          break;
+        case 0x0000000e:
+          clr_runtime_header(pReadFile);
+          break;
+        case 0x0000000f:
+          reserved(pReadFile);
           break;
       }
       fsetpos(pReadFile, &pos);
     }
   }
-  printf("***IMAGE_SECTION_TABLE_ITEM***\n");
+  printf("***optional_header_data_directories_item***\n");
 }
 
-void image_export_directory(FILE* pReadFile)
+void export_table(FILE* pReadFile)
 {
-  printf("***IMAGE_SECTION_TABLE_ITEM EXPORT***\n");
+  printf("***optional_header_data_directories_item export_table***\n");
   PRINTF_DWORD(characteristics)
   PRINTF_DWORD(timeDateStamp)
   PRINTF_WORD(majorVersion)
@@ -300,12 +338,12 @@ void image_export_directory(FILE* pReadFile)
     }
   }
   printf("\n");
-  printf("***IMAGE_SECTION_TABLE_ITEM EXPORT***\n");
+  printf("***optional_header_data_directories_item export_table***\n");
 }
 
-void image_import_descriptor(FILE* pReadFile, dword sectionAlignment, word numberOfSections, dword* sectionVirtualAddress, dword* sizeOfRawData, dword* pointerToRawData)
+void import_table(FILE* pReadFile, dword sectionAlignment, word numberOfSections, dword* sectionVirtualAddress, dword* sizeOfRawData, dword* pointerToRawData)
 {
-  printf("***IMAGE_SECTION_TABLE_ITEM IMPORT***\n");
+  printf("***optional_header_data_directories_item import_table***\n");
   while (1)
   {
     PRINTF_DWORD(characteristics)
@@ -333,12 +371,12 @@ void image_import_descriptor(FILE* pReadFile, dword sectionAlignment, word numbe
       break;
     }
   }
-  printf("***IMAGE_SECTION_TABLE_ITEM IMPORT***\n");
+  printf("***optional_header_data_directories_item import_table***\n");
 }
 
-void image_resource_directory(FILE* pReadFile)
+void resource_table(FILE* pReadFile)
 {
-  printf("***IMAGE_SECTION_TABLE_ITEM RESOURCE***\n");
+  printf("***optional_header_data_directories_item resource_table***\n");
   while (1)
   {
     PRINTF_DWORD(characteristics)
@@ -355,7 +393,85 @@ void image_resource_directory(FILE* pReadFile)
       break;
     }
   }
-  printf("***IMAGE_SECTION_TABLE_ITEM RESOURCE***\n");
+  printf("***optional_header_data_directories_item resource_table***\n");
+}
+
+void exception_table(FILE* pReadFile)
+{
+  printf("***optional_header_data_directories_item exception_table***\n");
+  printf("***optional_header_data_directories_item exception_table***\n");
+}
+
+void certificate_table(FILE* pReadFile)
+{
+  printf("***optional_header_data_directories_item certificate_table***\n");
+  printf("***optional_header_data_directories_item certificate_table***\n");
+}
+
+void base_relocation_table(FILE* pReadFile)
+{
+  printf("***optional_header_data_directories_item base_relocation_table***\n");
+  printf("***optional_header_data_directories_item base_relocation_table***\n");
+}
+
+void debug(FILE* pReadFile)
+{
+  printf("***optional_header_data_directories_item debug***\n");
+  printf("***optional_header_data_directories_item debug***\n");
+}
+
+void architecture(FILE* pReadFile)
+{
+  printf("***optional_header_data_directories_item architecture***\n");
+  printf("***optional_header_data_directories_item architecture***\n");
+}
+
+void global_ptr(FILE* pReadFile)
+{
+  printf("***optional_header_data_directories_item global_ptr***\n");
+  printf("***optional_header_data_directories_item global_ptr***\n");
+}
+
+void tls_table(FILE* pReadFile)
+{
+  printf("***optional_header_data_directories_item tls_table***\n");
+  printf("***optional_header_data_directories_item tls_table***\n");
+}
+
+void load_config_table(FILE* pReadFile)
+{
+  printf("***optional_header_data_directories_item load_config_table***\n");
+  printf("***optional_header_data_directories_item load_config_table***\n");
+}
+
+void bound_import(FILE* pReadFile)
+{
+  printf("***optional_header_data_directories_item bound_import***\n");
+  printf("***optional_header_data_directories_item bound_import***\n");
+}
+
+void iat(FILE* pReadFile)
+{
+  printf("***optional_header_data_directories_item iat***\n");
+  printf("***optional_header_data_directories_item iat***\n");
+}
+
+void delay_import_descriptor(FILE* pReadFile)
+{
+  printf("***optional_header_data_directories_item delay_import_descriptor***\n");
+  printf("***optional_header_data_directories_item delay_import_descriptor***\n");
+}
+
+void clr_runtime_header(FILE* pReadFile)
+{
+  printf("***optional_header_data_directories_item clr_runtime_header***\n");
+  printf("***optional_header_data_directories_item clr_runtime_header***\n");
+}
+
+void reserved(FILE* pReadFile)
+{
+  printf("***optional_header_data_directories_item reserved***\n");
+  printf("***optional_header_data_directories_item reserved***\n");
 }
 
 /*

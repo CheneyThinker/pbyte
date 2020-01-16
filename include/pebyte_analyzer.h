@@ -6,15 +6,28 @@
 #include "pebyte_base.h"
 
 int pebyte_analyzer(int, char**);
-void image_dos_header(FILE*, dword*);
+void dos_header(FILE*, dword*);
 void ms_dos_stub(FILE*, dword);
 void coff_file_header(FILE*, word*, word*);
-void image_optional_header(FILE*, dword*, dword*);
-void image_data_directories(FILE*, dword, dword*, dword*);
-void image_section_table(FILE*, word, dword*, dword*, dword*);
-void image_section_item(FILE*, dword, dword*, dword*, dword, word, dword*, dword*, dword*);
-void image_export_directory(FILE*);
-void image_import_descriptor(FILE*, dword, word, dword*, dword*, dword*);
-void image_resource_directory(FILE*);
+void optional_header(FILE*, dword*, dword*);
+void optional_header_data_directories(FILE*, dword, dword*, dword*);
+void section_table(FILE*, word, dword*, dword*, dword*);
+void optional_header_data_directories_item(FILE*, dword, dword*, dword*, dword, word, dword*, dword*, dword*);
+void export_table(FILE*);
+void import_table(FILE*, dword, word, dword*, dword*, dword*);
+void resource_table(FILE*);
+void exception_table(FILE*);
+void certificate_table(FILE*);
+void base_relocation_table(FILE*);
+void debug(FILE*);
+void architecture(FILE*);
+void global_ptr(FILE*);
+void tls_table(FILE*);
+void load_config_table(FILE*);
+void bound_import(FILE*);
+void iat(FILE*);
+void delay_import_descriptor(FILE*);
+void clr_runtime_header(FILE*);
+void reserved(FILE*);
 
 #endif
