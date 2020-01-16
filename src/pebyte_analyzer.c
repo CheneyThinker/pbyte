@@ -5,260 +5,368 @@ int pebyte_analyzer(int argc, char** argv)
   FILE* pReadFile = fopen(argv[2], "r");
   if (pReadFile != NULL)
   {
-    image_dos_header(pReadFile);
-    image_nt_headers(pReadFile);
+    dword e_lfanew;
+    image_dos_header(pReadFile, &e_lfanew);
+
+    ms_dos_stub(pReadFile, e_lfanew);
+
+    PRINTF_DWORD(signature)
+
+    word numberOfSections;
+    word sizeOfOptionalHeader;
+    coff_file_header(pReadFile, &numberOfSections, &sizeOfOptionalHeader);
+
+    dword sectionAlignment;
+    dword numberOfRvaAndSizes;
+    image_optional_header(pReadFile, &sectionAlignment, &numberOfRvaAndSizes);
+
+    dword virtualAddress[numberOfRvaAndSizes];
+    dword size[numberOfRvaAndSizes];
+    image_data_directories(pReadFile, numberOfRvaAndSizes, virtualAddress, size);
+
+    dword sectionVirtualAddress[numberOfSections];
+    dword sizeOfRawData[numberOfSections];
+    dword pointerToRawData[numberOfSections];
+    image_section_table(pReadFile, numberOfSections, sectionVirtualAddress, sizeOfRawData, pointerToRawData);
+
+    image_section_item(pReadFile, numberOfRvaAndSizes, virtualAddress, size, sectionAlignment, numberOfSections, sectionVirtualAddress, sizeOfRawData, pointerToRawData);
+
   }
   fclose(pReadFile);
   return 0;
 }
 
-void image_dos_header(FILE* pReadFile)
+void image_dos_header(FILE* pReadFile, dword* e_lfanew)
 {
-  printf("---IMAGE_DOS_HEADER---\n");
-  IMAGE_DOS_HEADER idh;
-  fread(&idh, sizeof(IMAGE_DOS_HEADER), 1, pReadFile);
-  printf("e_magic:    %04x\n", idh.e_magic);
-  printf("e_cblp:     %04x\n", idh.e_cblp);
-  printf("e_cp:       %04x\n", idh.e_cp);
-  printf("e_crlc:     %04x\n", idh.e_crlc);
-  printf("e_cparhdr:  %04x\n", idh.e_cparhdr);
-  printf("e_minalloc: %04x\n", idh.e_minalloc);
-  printf("e_maxalloc: %04x\n", idh.e_maxalloc);
-  printf("e_ss:       %04x\n", idh.e_ss);
-  printf("e_sp:       %04x\n", idh.e_sp);
-  printf("e_csum:     %04x\n", idh.e_csum);
-  printf("e_ip:       %04x\n", idh.e_ip);
-  printf("e_cs:       %04x\n", idh.e_cs);
-  printf("e_lfarlc:   %04x\n", idh.e_lfarlc);
-  printf("e_ovno:     %04x\n", idh.e_ovno);
-  printf("e_res:     ");
-  for (byte index = 0; index < 4; index++)
-  {
-    printf(" %04x", idh.e_res[index]);
-  }
-  printf("\n");
-  printf("e_oemid:    %04x\n", idh.e_oemid);
-  printf("e_oeminfo:  %04x\n", idh.e_oeminfo);
-  printf("e_res2:    ");
-  for (byte index = 0; index < 10; index++)
-  {
-    printf(" %04x", idh.e_res2[index]);
-  }
-  printf("\n");
-  printf("e_lfanew:   %08x\n", idh.e_lfanew);
-  printf("---IMAGE_DOS_HEADER---\n");
+  printf("***IMAGE_DOS_HEADER***\n");
+  PRINTF_WORD(e_magic)
+  PRINTF_WORD(e_cblp)
+  PRINTF_WORD(e_cp)
+  PRINTF_WORD(e_crlc)
+  PRINTF_WORD(e_cparhdr)
+  PRINTF_WORD(e_minalloc)
+  PRINTF_WORD(e_maxalloc)
+  PRINTF_WORD(e_ss)
+  PRINTF_WORD(e_sp)
+  PRINTF_WORD(e_csum)
+  PRINTF_WORD(e_ip)
+  PRINTF_WORD(e_cs)
+  PRINTF_WORD(e_lfarlc)
+  PRINTF_WORD(e_ovno)
+  PRINTF_WORD_ARR(e_res, E_RES_SIZE)
+  PRINTF_WORD(e_oemid)
+  PRINTF_WORD(e_oeminfo)
+  PRINTF_WORD_ARR(e_res2, E_RES2_SIZE)
+  PRINTF_PDWORD(e_lfanew)
+  printf("***IMAGE_DOS_HEADER***\n");
+}
+
+void ms_dos_stub(FILE* pReadFile, dword e_lfanew)
+{
+  printf("***MS_DOS_STUB***\n");
   #ifdef SKIP_DOS_STUB
-    fseek(pReadFile, idh.e_lfanew, SEEK_SET);
+    fseek(pReadFile, e_lfanew - IMAGE_DOS_HEADER_SIZE, SEEK_CUR);
   #else
-    dos_stub(pReadFile, idh.e_lfanew - sizeof(IMAGE_DOS_HEADER));
-  #endif
-}
-
-void dos_stub(FILE* pReadFile, dword pad)
-{
-  printf("---DOS_STUB---\n");
-  byte pad_byte[pad];
-  fread(pad_byte, pad * sizeof(byte), 1, pReadFile);
-  dword address = sizeof(IMAGE_DOS_HEADER);
-  for (dword pad_index = 0; pad_index < pad; pad_index++)
-  {
-    if (!(pad_index % 0x00000010))
+    dword address = 0x00000040;
+    dword size = e_lfanew - IMAGE_DOS_HEADER_SIZE;
+    byte dos_stub[size];
+    fread(dos_stub, 1, size * sizeof(byte), pReadFile);
+    for (dword index = 0; index < size; index++)
     {
-      if (pad_index)
+      if (!(index % 0x00000010))
       {
-        printf("\n");
+        if (index)
+        {
+          printf("\n");
+        }
+        printf("%08x:", address);
+        address = address + 0x00000010;
       }
-      printf("%08x:", address);
-      address = address + 0x00000010;
+      printf(" %02x", dos_stub[index]);
     }
-    printf(" %02x", pad_byte[pad_index]);
-  }
-  printf("\n---DOS_STUB---\n");
-}
-
-void image_nt_headers(FILE* pReadFile)
-{
-  printf("---IMAGE_NT_HEADERS---\n");
-  IMAGE_NT_HEADERS inh;
-  fread(&inh, sizeof(IMAGE_NT_HEADERS), 1, pReadFile);
-  printf("signature: %08x\n", inh.signature);
-  image_file_header(inh.fileHeader);
-  image_optional_header(pReadFile, inh.optionalHeader, inh.fileHeader.sizeOfOptionalHeader, inh.fileHeader.numberOfSections);
-  printf("---IMAGE_NT_HEADERS---\n");
-}
-
-void image_file_header(IMAGE_FILE_HEADER ifh)
-{
-  printf("\t---IMAGE_FILE_HEADER---\n");
-  printf("\tmachine:              %04x\n", ifh.machine);
-  printf("\tnumberOfSections:     %04x\n", ifh.numberOfSections);
-  printf("\ttimeDateStamp:        %08x\n", ifh.timeDateStamp);
-  printf("\tpointerToSymbolTable: %08x\n", ifh.pointerToSymbolTable);
-  printf("\tnumberOfSymbols:      %08x\n", ifh.numberOfSymbols);
-  printf("\tsizeOfOptionalHeader: %04x\n", ifh.sizeOfOptionalHeader);//if e0 32bit f0 64bit not change
-  printf("\tcharacteristics:      %04x\n", ifh.characteristics);
-  printf("\t---IMAGE_FILE_HEADER---\n");
-}
-
-void image_optional_header(FILE* pReadFile, IMAGE_OPTIONAL_HEADER ioh, word sizeOfOptionalHeader, word numberOfSections)
-{
-  printf("\t---IMAGE_OPTIONAL_HEADER---\n");
-  printf("\tmagic:                       %04x\n", ioh.magic);//10b 32bit 20b 64bit
-  printf("\tmajorLinkerVersion:          %02x\n", ioh.majorLinkerVersion);
-  printf("\tminorLinkerVersion:          %02x\n", ioh.minorLinkerVersion);
-  printf("\tsizeOfCode:                  %08x\n", ioh.sizeOfCode);
-  printf("\tsizeOfInitializedData:       %08x\n", ioh.sizeOfInitializedData);
-  printf("\tsizeOfUninitializedData:     %08x\n", ioh.sizeOfUninitializedData);
-  printf("\taddressOfEntryPoint:         %08x\n", ioh.addressOfEntryPoint);
-  printf("\tbaseOfCode:                  %08x\n", ioh.baseOfCode);
-  printf("\tbaseOfData:                  %08x\n", ioh.baseOfData);
-  printf("\timageBase:                   %08x\n", ioh.imageBase);//addressOfEntryPoint + imageBase
-  printf("\tsectionAlignment:            %08x\n", ioh.sectionAlignment);
-  printf("\tfileAlignment:               %08x\n", ioh.fileAlignment);
-  printf("\tmajorOperatingSystemVersion: %04x\n", ioh.majorOperatingSystemVersion);
-  printf("\tminorOperatingSystemVersion: %04x\n", ioh.minorOperatingSystemVersion);
-  printf("\tmajorImageVersion:           %04x\n", ioh.majorImageVersion);
-  printf("\tminorImageVersion:           %04x\n", ioh.minorImageVersion);
-  printf("\tmajorSubSystemVersion:       %04x\n", ioh.majorSubSystemVersion);
-  printf("\tminorSubSystemVersion:       %04x\n", ioh.minorSubSystemVersion);
-  printf("\twin32VersionValue:           %08x\n", ioh.win32VersionValue);
-  printf("\tsizeOfImage:                 %08x\n", ioh.sizeOfImage);
-  printf("\tsizeOfHeaders:               %08x\n", ioh.sizeOfHeaders);
-  printf("\tchecksum:                    %08x\n", ioh.checksum);
-  printf("\tsubSystem:                   %04x\n", ioh.subSystem);
-  printf("\tdllCharacteristics:          %04x\n", ioh.dllCharacteristics);
-  printf("\tsizeOfStackReserve:          %08x\n", ioh.sizeOfStackReserve);
-  printf("\tsizeOfStackCommit:           %08x\n", ioh.sizeOfStackCommit);
-  printf("\tsizeOfHeapReserve:           %08x\n", ioh.sizeOfHeapReserve);
-  printf("\tsizeOfHeapCommit:            %08x\n", ioh.sizeOfHeapCommit);
-  printf("\tloaderFlags:                 %08x\n", ioh.loaderFlags);
-  printf("\tnumberOfRvaAndSizes:         %08x\n", ioh.numberOfRvaAndSizes);
-  printf("\t---IMAGE_OPTIONAL_HEADER---\n");
-  fseek(pReadFile, sizeOfOptionalHeader - sizeof(IMAGE_OPTIONAL_HEADER), SEEK_CUR);
-  PIMAGE_SECTION_HEADER pish = (PIMAGE_SECTION_HEADER) malloc(sizeof(IMAGE_SECTION_HEADER) * numberOfSections);
-  fread(pish, sizeof(IMAGE_SECTION_HEADER) * numberOfSections, 1, pReadFile);
-  image_data_directory(pReadFile, ioh, pish, numberOfSections);
-  image_section_header(pish, numberOfSections);
-  free(pish);
-}
-
-void image_data_directory(FILE* pReadFile, IMAGE_OPTIONAL_HEADER ioh, PIMAGE_SECTION_HEADER pish, word numberOfSections)
-{
-  PIMAGE_DATA_DIRECTORY pidd = ioh.dataDirectory;
-  printf("\t\t---IMAGE_DATA_DIRECTORY---\n");
-  for (byte index = 0; index < 0x10; index++)
-  {
-    printf("\t\tvirtualAddress: %08x size: %08x\n", pidd[index].virtualAddress, pidd[index].size);
-    if (pidd[index].size)
+    if (size % 0x00000010)
     {
-      fseek(pReadFile, rva2foa(pidd[index].virtualAddress, numberOfSections, ioh.sectionAlignment, pish), SEEK_SET);
+      printf("\n");
+    }
+  #endif
+  printf("***MS_DOS_STUB***\n");
+}
+
+void coff_file_header(FILE* pReadFile, word* numberOfSections, word* sizeOfOptionalHeader)
+{
+  printf("***COFF_FILE_HEADER***\n");
+  PRINTF_WORD(machine)
+  PRINTF_PWORD(numberOfSections)
+  PRINTF_DWORD(timeDateStamp)
+  PRINTF_DWORD(pointerToSymbolTable)
+  PRINTF_DWORD(numberOfSymbols)
+  PRINTF_PWORD(sizeOfOptionalHeader)
+  PRINTF_WORD(characteristics)
+  printf("***COFF_FILE_HEADER***\n");
+}
+
+void image_optional_header(FILE* pReadFile, dword* sectionAlignment, dword* numberOfRvaAndSizes)
+{
+  printf("***IMAGE_OPTIONAL_HEADER***\n");
+  PRINTF_WORD(magic)
+  PRINTF_BYTE(majorLinkerVersion)
+  PRINTF_BYTE(minorLinkerVersion)
+  PRINTF_DWORD(sizeOfCode)
+  PRINTF_DWORD(sizeOfInitializedData)
+  PRINTF_DWORD(sizeOfUninitializedData)
+  PRINTF_DWORD(addressOfEntryPoint)
+  PRINTF_DWORD(baseOfCode)
+  if (magic == 0x010b)
+  {
+    PRINTF_DWORD(baseOfData)
+    PRINTF_DWORD(imageBase)
+  }
+  else if (magic == 0x020b)
+  {
+    PRINTF_QWORD(imageBase)
+  }
+  PRINTF_PDWORD(sectionAlignment)
+  PRINTF_DWORD(fileAlignment)
+  PRINTF_WORD(majorOperatingSystemVersion)
+  PRINTF_WORD(minorOperatingSystemVersion)
+  PRINTF_WORD(majorImageVersion)
+  PRINTF_WORD(minorImageVersion)
+  PRINTF_WORD(majorSubsystemVersion)
+  PRINTF_WORD(minorSubsystemVersion)
+  PRINTF_DWORD(win32VersionValue)
+  PRINTF_DWORD(sizeOfImage)
+  PRINTF_DWORD(sizeOfHeaders)
+  PRINTF_DWORD(checkSum)
+  PRINTF_WORD(subsystem)
+  PRINTF_WORD(dllCharacteristics)
+  if (magic == 0x010b)
+  {
+    PRINTF_DWORD(sizeOfStackReserve)
+    PRINTF_DWORD(sizeOfStackCommit)
+    PRINTF_DWORD(sizeOfHeapReserve)
+    PRINTF_DWORD(sizeOfHeapCommit)
+  }
+  else if (magic == 0x020b)
+  {
+    PRINTF_QWORD(sizeOfStackReserve)
+    PRINTF_QWORD(sizeOfStackCommit)
+    PRINTF_QWORD(sizeOfHeapReserve)
+    PRINTF_QWORD(sizeOfHeapCommit)
+  }
+  PRINTF_DWORD(loaderFlags)
+  PRINTF_PDWORD(numberOfRvaAndSizes)
+  printf("***IMAGE_OPTIONAL_HEADER***\n");
+}
+
+void image_data_directories(FILE* pReadFile, dword numberOfRvaAndSizes, dword* virtualAddress, dword* size)
+{
+  printf("***IMAGE_DATA_DIRECTORIES***\n");
+  for (dword index = 0x00000000; index < numberOfRvaAndSizes; index = index + 0x00000001)
+  {
+    PRINTF_PDWORD_ARR(virtualAddress, index)
+    PRINTF_PDWORD_ARR(size, index)
+  }
+  printf("***IMAGE_DATA_DIRECTORIES***\n");
+}
+
+void image_section_table(FILE* pReadFile, word numberOfSections, dword* virtualAddress, dword* sizeOfRawData, dword* pointerToRawData)
+{
+  printf("***IMAGE_SECTION_TABLE***\n");
+  for (word index = 0x0000; index < numberOfSections; index = index + 0x0001)
+  {
+    byte name[8];
+    fread(name, 1, sizeof(byte) * 8, pReadFile);
+    printf("name: %s\n", name);
+    /*for (byte count = 0x00; count < 0x08; count = count + 0x01)
+      {
+        printf(" %02x", name[count]);
+      }
+      printf("\n");*/
+    PRINTF_DWORD(virtualSize)
+    PRINTF_PDWORD_ARR(virtualAddress, index)
+    PRINTF_PDWORD_ARR(sizeOfRawData, index)
+    PRINTF_PDWORD_ARR(pointerToRawData, index)
+    PRINTF_DWORD(pointerToRelocations)
+    PRINTF_DWORD(pointerToLinenumbers)
+    PRINTF_WORD(numberOfRelocations)
+    PRINTF_WORD(numberOfLinenumbers)
+    PRINTF_DWORD(characteristics)
+  }
+  printf("***IMAGE_SECTION_TABLE***\n");
+}
+
+void image_section_item(FILE* pReadFile, dword numberOfRvaAndSizes, dword* virtualAddress, dword* size, dword sectionAlignment, word numberOfSections, dword* sectionVirtualAddress, dword* sizeOfRawData, dword* pointerToRawData)
+{
+  printf("***IMAGE_SECTION_TABLE_ITEM***\n");
+  for (dword index = 0x00000000; index < numberOfRvaAndSizes; index = index + 0x00000001)
+  {
+    if (size[index])
+    {
+      fpos_t pos;
+      fgetpos(pReadFile, &pos);
+      dword foa = rva2foa(virtualAddress[index], sectionAlignment, numberOfSections, sectionVirtualAddress, sizeOfRawData, pointerToRawData);
+      fseek(pReadFile, foa, SEEK_SET);
       switch (index)
       {
-        case 0x00:
+        case 0x00000000:
           image_export_directory(pReadFile);
           break;
-        case 0x01:
-          image_import_descriptor(pReadFile);
+        case 0x00000001:
+          image_import_descriptor(pReadFile, sectionAlignment, numberOfSections, sectionVirtualAddress, sizeOfRawData, pointerToRawData);
           break;
-        case 0x02:
-          //image_resource_directory(pReadFile);
+        case 0x00000002:
+          image_resource_directory(pReadFile);
+          break;
+        case 0x00000003:
           break;
       }
+      fsetpos(pReadFile, &pos);
     }
   }
-  printf("\t\t---IMAGE_DATA_DIRECTORY---\n");
+  printf("***IMAGE_SECTION_TABLE_ITEM***\n");
 }
 
-void image_export_directory(FILE* pReadFile) {
-  IMAGE_EXPORT_DIRECTORY ied;
-  fread(&ied, sizeof(IMAGE_EXPORT_DIRECTORY), 1, pReadFile);
-  printf("\t\t\t---IMAGE_EXPORT_DIRECTORY---\n");
-  printf("\t\t\tcharacteristics:       %08x\n", ied.characteristics);
-  printf("\t\t\ttimeDateStamp:         %08x\n", ied.timeDateStamp);
-  printf("\t\t\tmajorVersion:          %04x\n", ied.majorVersion);
-  printf("\t\t\tminorVersion:          %04x\n", ied.minorVersion);
-  printf("\t\t\tname:                  %08x ", ied.name);
-  fseek(pReadFile, ied.name, SEEK_SET);
-  byte name = 0x00;
-  while (fread(&name, 1, 1, pReadFile) && name)
+void image_export_directory(FILE* pReadFile)
+{
+  printf("***IMAGE_SECTION_TABLE_ITEM EXPORT***\n");
+  PRINTF_DWORD(characteristics)
+  PRINTF_DWORD(timeDateStamp)
+  PRINTF_WORD(majorVersion)
+  PRINTF_WORD(minorVersion)
+  PRINTF_DWORD(name)
+  PRINTF_DWORD(base)
+  PRINTF_DWORD(numberOfFunctions)
+  PRINTF_DWORD(numberOfNames)
+  PRINTF_DWORD(addressOfFunctions)
+  PRINTF_DWORD(addressOfNames)
+  PRINTF_DWORD(addressOfNameOrdinals)
+
+  fseek(pReadFile, name, SEEK_SET);
+  byte name_str;
+  while (fread(&name_str, 1, 1, pReadFile) && name_str)
   {
-    printf("%c", name);
-    name = 0x00;
+    printf("%c", name_str);
   }
   printf("\n");
-  printf("\t\t\tbase:                  %08x\n", ied.base);
-  printf("\t\t\tnumberOfFunctions:     %08x\n", ied.numberOfFunctions);
-  printf("\t\t\tnumberOfNames:         %08x\n", ied.numberOfNames);
-  printf("\t\t\taddressOfFunctions:    %08x\n", ied.addressOfFunctions);
-  fseek(pReadFile, ied.addressOfFunctions, SEEK_SET);
-  dword addressOfFunctions[ied.numberOfFunctions];
-  fread(addressOfFunctions, sizeof(dword) * ied.numberOfFunctions, 1, pReadFile);
-  for (dword index = 0; index < ied.numberOfFunctions; index++) {
-    if (!(index % 0x0000000c)) {
-      if (index) {
+
+  fseek(pReadFile, addressOfFunctions, SEEK_SET);
+  dword addressOfFunctions_[numberOfFunctions];
+  fread(addressOfFunctions_, 1, sizeof(dword) * numberOfFunctions, pReadFile);
+  for (dword index = 0; index < numberOfFunctions; index++)
+  {
+    if (!(index % 0x00000010))
+    {
+      if (index)
+      {
         printf("\n");
       }
-      printf("\t\t\t\t%08x", addressOfFunctions[index]);
-    } else {
-      printf(" %08x", addressOfFunctions[index]);
+      printf("%08x", addressOfFunctions_[index]);
+    }
+    else
+    {
+      printf(" %08x", addressOfFunctions_[index]);
     }
   }
   printf("\n");
-  printf("\t\t\taddressOfNames:        %08x\n", ied.addressOfNames);
-  fseek(pReadFile, ied.addressOfNames, SEEK_SET);
-  dword addressOfNames[ied.numberOfNames];
-  fread(addressOfNames, sizeof(dword) * ied.numberOfNames, 1, pReadFile);
-  for (dword index = 0; index < ied.numberOfNames; index++) {
-    printf("\t\t\t\t%08x ", addressOfNames[index]);
-    fseek(pReadFile, addressOfNames[index], SEEK_SET);
-    byte name = 0x00;
-    while (fread(&name, 1, 1, pReadFile) && name) {
-      printf("%c", name);
+
+  fseek(pReadFile, addressOfNames, SEEK_SET);
+  dword addressOfNames_[numberOfNames];
+  fread(addressOfNames_, 1, sizeof(dword) * numberOfNames, pReadFile);
+  for (dword index = 0; index < numberOfNames; index++)
+  {
+    printf("%08x ", addressOfNames_[index]);
+    fseek(pReadFile, addressOfNames_[index], SEEK_SET);
+    while (fread(&name_str, 1, 1, pReadFile) && name_str)
+    {
+      printf("%c", name_str);
     }
     printf("\n");
   }
-  printf("\t\t\taddressOfNameOrdinals: %08x\n", ied.addressOfNameOrdinals);
-  fseek(pReadFile, ied.addressOfNameOrdinals, SEEK_SET);
-  word addressOfNameOrdinals[ied.numberOfNames];
-  fread(addressOfNameOrdinals, sizeof(word) * ied.numberOfNames, 1, pReadFile);
-  for (dword index = 0; index < ied.numberOfNames; index++) {
-    if (!(index % 0x00000014)) {
-      if (index) {
+
+  fseek(pReadFile, addressOfNameOrdinals, SEEK_SET);
+  word addressOfNameOrdinals_[numberOfNames];
+  fread(addressOfNameOrdinals_, 1, sizeof(word) * numberOfNames, pReadFile);
+  for (dword index = 0; index < numberOfNames; index++)
+  {
+    if (!(index % 0x0000001e))
+    {
+      if (index)
+      {
         printf("\n");
       }
-      printf("\t\t\t\t%04x", addressOfNameOrdinals[index]);
+      printf("%04x", addressOfNameOrdinals_[index]);
     } else {
-      printf(" %04x", addressOfNameOrdinals[index]);
+      printf(" %04x", addressOfNameOrdinals_[index]);
     }
   }
   printf("\n");
-  printf("\t\t\t---IMAGE_EXPORT_DIRECTORY---\n");
+  printf("***IMAGE_SECTION_TABLE_ITEM EXPORT***\n");
 }
 
-void image_import_descriptor(FILE* pReadFile) {
-  printf("\t\t\t---IMAGE_IMPORT_DESCRIPTOR---\n");
-  IMAGE_IMPORT_DESCRIPTOR iid;
-  fpos_t position;
-  while (fread(&iid, sizeof(IMAGE_IMPORT_DESCRIPTOR), 1, pReadFile) && (iid.dummyunionname.characteristics || iid.timeDateStamp || iid.forwarderChain || iid.name || iid.firstThunk)) {
-    printf("\t\t\tcharacteristics: %08x originalFirstThunk: %08x\n", iid.dummyunionname.characteristics, iid.dummyunionname.originalFirstThunk);
-    printf("\t\t\ttimeDateStamp:   %08x\n", iid.timeDateStamp);
-    printf("\t\t\tforwarderChain:  %08x\n", iid.forwarderChain);
-    printf("\t\t\tname:            %08x\n", iid.name);
-    printf("\t\t\tfirstThunk:      %08x\n", iid.firstThunk);
-    //fgetpos(pReadFile, &position);
-    //image_thunk_data(pReadFile, iid.dummyunionname.originalFirstThunk);
-    //fsetpos(pReadFile, &position);
+void image_import_descriptor(FILE* pReadFile, dword sectionAlignment, word numberOfSections, dword* sectionVirtualAddress, dword* sizeOfRawData, dword* pointerToRawData)
+{
+  printf("***IMAGE_SECTION_TABLE_ITEM IMPORT***\n");
+  while (1)
+  {
+    PRINTF_DWORD(characteristics)
+    PRINTF_DWORD(timeDateStamp)
+    PRINTF_DWORD(forwarderChain)
+    PRINTF_DWORD(name)
+    PRINTF_DWORD(firstThunk)
+    if (characteristics || timeDateStamp || forwarderChain || name || firstThunk)
+    {
+      fpos_t pos;
+      fgetpos(pReadFile, &pos);
+      dword name_foa = rva2foa(name, sectionAlignment, numberOfSections, sectionVirtualAddress, sizeOfRawData, pointerToRawData);
+      fseek(pReadFile, name_foa, SEEK_SET);
+      byte name_str;
+      while (fread(&name_str, 1, 1, pReadFile) && name_str)
+      {
+        printf("%c", name_str);
+      }
+      printf("\n");
+      //image_thunk_data(pReadFile, characteristics);//originalFirstThunk = characteristics
+      fsetpos(pReadFile, &pos);
+    }
+    else
+    {
+      break;
+    }
   }
-  printf("\t\t\t---IMAGE_IMPORT_DESCRIPTOR---\n");
+  printf("***IMAGE_SECTION_TABLE_ITEM IMPORT***\n");
 }
 
+void image_resource_directory(FILE* pReadFile)
+{
+  printf("***IMAGE_SECTION_TABLE_ITEM RESOURCE***\n");
+  while (1)
+  {
+    PRINTF_DWORD(characteristics)
+    PRINTF_DWORD(timeDateStamp)
+    PRINTF_WORD(majorVersion)
+    PRINTF_WORD(minorVersion)
+    PRINTF_WORD(numberOfNamedEntries)
+    PRINTF_WORD(numberOfIdEntries)
+    if (characteristics || timeDateStamp || majorVersion || minorVersion || numberOfNamedEntries || numberOfIdEntries)
+    {
+    }
+    else
+    {
+      break;
+    }
+  }
+  printf("***IMAGE_SECTION_TABLE_ITEM RESOURCE***\n");
+}
+
+/*
 void image_thunk_data(FILE* pReadFile, dword originalFirstThunk)
 {
   printf("\t\t\t\t---IMAGE_THUNK_DATA---\n");
   fseek(pReadFile, originalFirstThunk, SEEK_SET);
   IMAGE_THUNK_DATA itd;
   byte counter = 0x00;
-  while (fread(&itd, sizeof(IMAGE_THUNK_DATA), 1, pReadFile) && itd.u1.forwarderString)
+  fpos_t position;
+  while (fread(&itd, 1, sizeof(IMAGE_THUNK_DATA), pReadFile) && itd.u1.forwarderString)
   {
     if (counter == 0x00)
     {
@@ -275,50 +383,17 @@ void image_thunk_data(FILE* pReadFile, dword originalFirstThunk)
       counter = counter + 0x01;
       printf(" %08x", itd.u1.forwarderString);
     }
+    fgetpos(pReadFile, &position);
+    fseek(pReadFile, itd.u1.forwarderString, SEEK_SET);
+    IMAGE_IMPORT_BY_NAME iibn;
+    fread(&iibn, 1, sizeof(IMAGE_IMPORT_BY_NAME), pReadFile);
+    printf("%04x\n", iibn.hint);
+    fsetpos(pReadFile, &position);
   }
   if (counter)
   {
     printf("\n");
   }
   printf("\t\t\t\t---IMAGE_THUNK_DATA---\n");
-  /*fseek(pReadFile, forwarderString, SEEK_SET);
-  IMAGE_IMPORT_BY_NAME iibn;
-  fread(&iibn, sizeof(IMAGE_IMPORT_BY_NAME), 1, pReadFile);
-  printf("%04x %ld\n", iibn.hint, sizeof(iibn.name) / sizeof(byte));
-  word index = 0x0000;
-  while (iibn.name[index]) {
-    printf("%02x", iibn.name[index++]);
-  }
-  printf("\n");*/
 }
-
-void image_resource_directory(FILE* pReadFile) {
-  printf("\t\t\t---IMAGE_RESOURCE_DIRECTORY---\n");
-  IMAGE_RESOURCE_DIRECTORY ird;
-  while (fread(&ird, sizeof(IMAGE_RESOURCE_DIRECTORY), 1, pReadFile) && (ird.characteristics || ird.timeDateStamp || ird.majorVersion || ird.minorVersion || ird.numberOfNamedEntries || ird.numberOfIdEntries)) {
-    printf("\t\t\tcharacteristics:      %08x\n", ird.characteristics);
-    printf("\t\t\ttimeDateStamp:        %08x\n", ird.timeDateStamp);
-    printf("\t\t\tmajorVersion:         %04x\n", ird.majorVersion);
-    printf("\t\t\tminorVersion:         %04x\n", ird.minorVersion);
-    printf("\t\t\tnumberOfNamedEntries: %04x\n", ird.numberOfNamedEntries);
-    printf("\t\t\tnumberOfIdEntries:    %04x\n", ird.numberOfIdEntries);
-  }
-  printf("\t\t\t---IMAGE_RESOURCE_DIRECTORY---\n");
-}
-
-void image_section_header(PIMAGE_SECTION_HEADER pish, word numberOfSections) {
-  printf("\t---IMAGE_SECTION_HEADER---\n");
-  for (word index = 0; index < numberOfSections; index++) {
-    printf("\tname:                 %s\n", pish[index].name);
-    printf("\tphysicalAddress:      %08x virtualSize: %08x\n", pish[index].misc.physicalAddress, pish[index].misc.virtualSize);
-    printf("\tvirtualAddress:       %08x\n", pish[index].virtualAddress);
-    printf("\tsizeOfRawData:        %08x\n", pish[index].sizeOfRawData);
-    printf("\tpointerToRawData:     %08x\n", pish[index].pointerToRawData);
-    printf("\tpointerToRelocations: %08x\n", pish[index].pointerToRelocations);
-    printf("\tpointerToLinenumbers: %08x\n", pish[index].pointerToLinenumbers);
-    printf("\tnumberOfRelocations:  %04x\n", pish[index].numberOfRelocations);
-    printf("\tnumberOfLinenumbers:  %04x\n", pish[index].numberOfLinenumbers);
-    printf("\tcharacteristics:      %08x\n", pish[index].characteristics);
-  }
-  printf("\t---IMAGE_SECTION_HEADER---\n");
-}
+*/

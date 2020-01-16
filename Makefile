@@ -1,4 +1,4 @@
-objects	= pebyte_struct.o\
+objects	= pebyte_base.o\
           pebyte_analyzer.o\
           pebyte_generator.o\
           pebyte.o
